@@ -265,22 +265,22 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (!blob) continue;
 
-            let diff = Math.abs(blob.size - targetSize);
-            if (diff < bestDiff) {
-                bestDiff = diff;
-                bestBlob = blob;
-            }
-
-            if (blob.size > targetSize) {
-                max = mid; // Decrease quality
+            // Strictly below or equal to target size
+            if (blob.size <= targetSize) {
+                let diff = targetSize - blob.size;
+                if (diff < bestDiff) {
+                    bestDiff = diff;
+                    bestBlob = blob;
+                }
+                min = mid; // Safe to try increasing quality
             } else {
-                min = mid; // Increase quality
+                max = mid; // Too big, must decrease quality
             }
         }
         
-        // Ensure we always return something
+        // If we couldn't even hit the target size at the lowest quality (physical limit of format at these dimensions)
         if (!bestBlob) {
-            bestBlob = await new Promise(resolve => canvas.toBlob(resolve, format, 0.7));
+            bestBlob = await new Promise(resolve => canvas.toBlob(resolve, format, 0.01));
         }
         return bestBlob;
     }
@@ -304,24 +304,25 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (!blob) continue;
 
-            let diff = Math.abs(blob.size - targetSize);
-            if (diff < bestDiff) {
-                bestDiff = diff;
-                bestBlob = blob;
-            }
-
-            if (blob.size > targetSize) {
-                maxScale = midScale; // Shrink more
+            // Strictly below or equal to target size
+            if (blob.size <= targetSize) {
+                let diff = targetSize - blob.size;
+                if (diff < bestDiff) {
+                    bestDiff = diff;
+                    bestBlob = blob;
+                }
+                minScale = midScale; // Safe to try increasing scale
             } else {
-                minScale = midScale; // Shrink less
+                maxScale = midScale; // Too big, must shrink more
             }
         }
 
+        // If we couldn't hit the target size even at the lowest scale tested, try a tiny scale as last resort
         if (!bestBlob) {
             const canvas = document.createElement('canvas');
-            canvas.width = img.width;
-            canvas.height = img.height;
-            canvas.getContext('2d').drawImage(img, 0, 0);
+            canvas.width = Math.max(1, Math.floor(img.width * 0.1));
+            canvas.height = Math.max(1, Math.floor(img.height * 0.1));
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
             bestBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
         }
         return bestBlob;
