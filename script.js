@@ -247,18 +247,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function compressQualityBased(img, format, targetSize) {
-        let min = 0.0;
-        let max = 1.0;
-        let bestBlob = null;
-        let bestDiff = Infinity;
-        
         const canvas = document.createElement('canvas');
         canvas.width = img.width;
         canvas.height = img.height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0);
 
-        // Binary search for optimal quality (7 iterations is usually enough)
+        // First, try a standard high quality. If it's already under the target size, 
+        // return it so we don't artificially inflate the file size trying to hit the target.
+        let initialBlob = await new Promise(resolve => canvas.toBlob(resolve, format, 0.92));
+        if (initialBlob && initialBlob.size <= targetSize) {
+            return initialBlob;
+        }
+
+        let min = 0.0;
+        let max = 0.92; // No need to search above 0.92 since it failed
+        let bestBlob = null;
+        let bestDiff = Infinity;
+
+        // Binary search for optimal quality
         for (let i = 0; i < 7; i++) {
             let mid = (min + max) / 2;
             let blob = await new Promise(resolve => canvas.toBlob(resolve, format, mid));
@@ -278,7 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // If we couldn't even hit the target size at the lowest quality (physical limit of format at these dimensions)
+        // If we couldn't even hit the target size at the lowest quality
         if (!bestBlob) {
             bestBlob = await new Promise(resolve => canvas.toBlob(resolve, format, 0.01));
         }
@@ -286,6 +293,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function compressPNG(img, targetSize) {
+        // Try scale 1.0 first to avoid artificial scaling loop
+        let initialBlob = await new Promise(resolve => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            canvas.toBlob(resolve, 'image/png');
+        });
+
+        if (initialBlob && initialBlob.size <= targetSize) {
+            return initialBlob;
+        }
+
         let minScale = 0.1;
         let maxScale = 1.0;
         let bestBlob = null;
