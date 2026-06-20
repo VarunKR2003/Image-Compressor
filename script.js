@@ -201,7 +201,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function compressImage(file, targetSizeKB, targetFormat) {
-        const targetSize = targetSizeKB * 1024;
+        let targetSize = targetSizeKB * 1024;
+        
+        // Force the output to never be larger than the original file size
+        if (file.size < targetSize) {
+            targetSize = file.size;
+        }
+
         const img = await loadImage(file);
         let format = targetFormat === 'original' ? file.type : targetFormat;
         
@@ -209,7 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
             format = 'image/jpeg';
         }
 
-        // Corner Case: If file is already smaller than target AND we are keeping the original format.
+        // Corner Case: If file is already smaller than or equal to target AND we are keeping the original format.
         // We can just return the original file to prevent any unnecessary quality loss.
         if (file.size <= targetSize && format === file.type) {
             return {
@@ -289,6 +295,33 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!bestBlob) {
             bestBlob = await new Promise(resolve => canvas.toBlob(resolve, format, 0.01));
         }
+
+        // AGGRESSIVE RESIZING FALLBACK
+        // If the absolute lowest quality is STILL bigger than the target size, shrink the image!
+        if (bestBlob && bestBlob.size > targetSize) {
+            let scale = 0.8;
+            while (scale >= 0.1) {
+                const scaledCanvas = document.createElement('canvas');
+                scaledCanvas.width = Math.max(1, Math.floor(img.width * scale));
+                scaledCanvas.height = Math.max(1, Math.floor(img.height * scale));
+                scaledCanvas.getContext('2d').drawImage(img, 0, 0, scaledCanvas.width, scaledCanvas.height);
+                
+                // Try low quality on the shrunken canvas
+                let blob = await new Promise(resolve => scaledCanvas.toBlob(resolve, format, 0.1));
+                if (blob && blob.size <= targetSize) {
+                    return blob;
+                }
+                scale -= 0.2; // 0.8, 0.6, 0.4, 0.2
+            }
+
+            // Absolute last resort: tiny postage stamp
+            const tinyCanvas = document.createElement('canvas');
+            tinyCanvas.width = Math.max(1, Math.floor(img.width * 0.05)); // 5% scale
+            tinyCanvas.height = Math.max(1, Math.floor(img.height * 0.05));
+            tinyCanvas.getContext('2d').drawImage(img, 0, 0, tinyCanvas.width, tinyCanvas.height);
+            bestBlob = await new Promise(resolve => tinyCanvas.toBlob(resolve, format, 0.01));
+        }
+
         return bestBlob;
     }
 
@@ -346,6 +379,32 @@ document.addEventListener('DOMContentLoaded', () => {
             canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
             bestBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
         }
+
+        // AGGRESSIVE RESIZING FALLBACK FOR PNG
+        // If it's STILL too big, aggressively shrink it until it fits
+        if (bestBlob && bestBlob.size > targetSize) {
+            let scale = 0.08;
+            while (scale >= 0.02) {
+                const scaledCanvas = document.createElement('canvas');
+                scaledCanvas.width = Math.max(1, Math.floor(img.width * scale));
+                scaledCanvas.height = Math.max(1, Math.floor(img.height * scale));
+                scaledCanvas.getContext('2d').drawImage(img, 0, 0, scaledCanvas.width, scaledCanvas.height);
+                
+                let blob = await new Promise(resolve => scaledCanvas.toBlob(resolve, 'image/png'));
+                if (blob && blob.size <= targetSize) {
+                    return blob;
+                }
+                scale -= 0.02; // 0.08, 0.06, 0.04, 0.02
+            }
+            
+            // Absolute last resort
+            const tinyCanvas = document.createElement('canvas');
+            tinyCanvas.width = Math.max(1, Math.floor(img.width * 0.01)); // 1% scale
+            tinyCanvas.height = Math.max(1, Math.floor(img.height * 0.01));
+            tinyCanvas.getContext('2d').drawImage(img, 0, 0, tinyCanvas.width, tinyCanvas.height);
+            bestBlob = await new Promise(resolve => tinyCanvas.toBlob(resolve, 'image/png'));
+        }
+
         return bestBlob;
     }
 
