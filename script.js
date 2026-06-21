@@ -77,7 +77,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
         if (imageFiles.length === 0) return;
 
-        const targetSizeKB = parseFloat(targetSizeInput.value) || 200;
+        const inputValue = parseFloat(targetSizeInput.value);
+        if (inputValue <= 0) {
+            alert('Please enter a size greater than 1kb.');
+            return;
+        }
+
+        const targetSizeKB = inputValue || 200;
         const targetFormat = targetFormatSelect.value;
 
         actionsBar.classList.remove('hidden');
